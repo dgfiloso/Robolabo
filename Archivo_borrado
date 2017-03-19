@@ -1,0 +1,29 @@
+uint32_t ul_channel = PWM_CHANNEL_0;
+uint32_t prescaler = PWM_CMR_CPRE_CLKA;
+uint32_t alignment = PWM_CMR_CALG;  // = valor no conocido ;
+uint32_t polarity = PWM_CMR_CPOL;  // = valor no conocido ;
+void setup() {
+//  pwm_channel_t pwm_channel_instance; 
+pmc_enable_periph_clk(ID_PWM); 
+PWMC_EnableChannel(PWM,0);
+//  pwm_channel_disable(PWM, PWM_CHANNEL_0);
+//  pwm_clock_t clock_setting = {
+//      .ul_clka = 1000 * 100,
+//      .ul_clkb = 0,
+//      .ul_mck = 48000000
+//  };
+//  pwm_init(PWM, &clock_setting);
+//  pwm_channel_instance.ul_prescaler = PWM_CMR_CPRE_CLKA;
+//  pwm_channel_instance.ul_period = 100;
+//  pwm_channel_instance.ul_duty = 50;
+//  pwm_channel_instance.channel = PWM_CHANNEL_0;
+//  pwm_channel_init(PWM, &pwm_channel_instance);
+
+  PWMC_ConfigureChannel(PWM, ul_channel, prescaler, alignment, polarity );
+
+}
+
+void loop() {
+ // pwm_channel_enable(PWM, PWM_CHANNEL_0);
+
+}
