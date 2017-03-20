@@ -1,3 +1,5 @@
+#include <DueTimer.h>
+
 uint32_t clka = 0;    //  No se usa
 uint32_t clkb = 0;    //  No se usa
 uint32_t mck = 0;     //  Master clock sin prescalado
@@ -11,6 +13,9 @@ uint32_t period = 100;      //  Frecuencia 20kHz -> Periodo 50 us -> Usando MCK 
 uint16_t duty = 50;
 uint16_t timeH = 0;
 uint16_t timeL = 0;
+
+uint32_t dec1Pin = 5; // Decoder input pin 1
+uint32_t dec2Pin = 6; // Decoder input pin 2
 
 void setup() {
 
@@ -33,11 +38,40 @@ void setup() {
 
   PWMC_EnableChannel(  PWM,  ul_channel ) ;
 
+  //  Configuramos los pines de entrada del decoder
+  PIO_Configure(
+    g_APinDescription[dec1Pin].pPort,
+    g_APinDescription[dec1Pin].ulPinType,
+    g_APinDescription[dec1Pin].ulPin,
+    g_APinDescription[dec1Pin].ulPinConfiguration);
+   
+  PIO_Configure(
+    g_APinDescription[dec2Pin].pPort,
+    g_APinDescription[dec2Pin].ulPinType,
+    g_APinDescription[dec2Pin].ulPin,
+    g_APinDescription[dec2Pin].ulPinConfiguration);
 
+  PIO_SetInput(
+    g_APinDescription[dec1Pin].pPort,
+    g_APinDescription[dec1Pin].ulPin,
+    g_APinDescription[dec1Pin].ulPinConfiguration);
+
+  PIO_SetInput(
+    g_APinDescription[dec1Pin].pPort,
+    g_APinDescription[dec1Pin].ulPin,
+    g_APinDescription[dec1Pin].ulPinConfiguration);
+    
+  Timer3.attachInterrupt(readDecoder).setPeriod(1000);    //  Cada 1000 us se lanza la función readDecoder()
 
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
-
+  
+  Timer3.start();
+  
 }
+
+void readDecoder () {
+  
+}
+
