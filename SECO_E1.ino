@@ -1,17 +1,19 @@
 #include <DueTimer.h>
 
-uint32_t CPRD = 50*84;     //  Frecuencia 20kHz -> Periodo 50 us -> Usando MCK este campo es: T*MCK = 50 us * 84 MHz
+const uint32_t CPRD = 50*84;     //  Frecuencia 20kHz -> Periodo 50 us -> Usando MCK este campo es: T*MCK = 50 us * 84 MHz
 
-uint32_t channel_0 = 0;   // PWM channel 0
+const uint32_t channel_0 = 0;   // PWM channel 0
 uint16_t duty_cycle_0 = 0;       //  De 0 a CPRD
-uint32_t pwmPin35 = 35; // PWM output pin
+const uint32_t pwmPin35 = 35; // PWM output pin
 
-uint32_t channel_1 = 1;   // PWM Channel 1
+const uint32_t channel_1 = 1;   // PWM Channel 1
 uint16_t duty_cycle_1 = 0;       //  De 0 a CPRD
-uint32_t pwmPin37 = 37; // PWM output pin
+const uint32_t pwmPin37 = 37; // PWM output pin
   
-uint32_t dec1Pin = 5; // Decoder input pin 1
-uint32_t dec2Pin = 6; // Decoder input pin 2
+const byte encPin1 = 3; // Encoder input pin 1
+const byte encPin2 = 7; // Encoder input pin 2
+volatile int pulsos = 0;
+volatile int sentido = true;
 
 //  Tal y como esta hecho, solo se pueden usar pines del periférico B
 void setupPWM(uint32_t channel, uint16_t duty, uint32_t pwmPin){
@@ -37,7 +39,7 @@ void setupPWM(uint32_t channel, uint16_t duty, uint32_t pwmPin){
   PWMC_SetDutyCycle(  PWM,  channel,  duty ) ;
   PWMC_SetDeadTime(  PWM,  channel,  timeH,  timeL ) ;
 
-  PWMC_EnableChannel(  PWM,  channel ) ;
+//  PWMC_EnableChannel(  PWM,  channel ) ;
 
   //  Configuramos el puerto del PWM
   PIO_Configure(
@@ -47,24 +49,67 @@ void setupPWM(uint32_t channel, uint16_t duty, uint32_t pwmPin){
     g_APinDescription[pwmPin].ulPinConfiguration);
 }
 
-int setVoltage(double v, uint32_t channel, uint32_t pwmPin) {
+void readEncoder () {
+  pulsos++;
+}
+
+int setupEncInt(int encPin1, int encPin2) {
+  pinMode(encPin1, INPUT);
+  attachInterrupt(digitalPinToInterrupt(encPin1), readEncoder, CHANGE);
+
+  pinMode(encPin2, INPUT);
+  attachInterrupt(digitalPinToInterrupt(encPin2), readEncoder, CHANGE);
+}
+
+int setVoltage(double v, uint32_t channel) {
   if (v >= 0 && v <= 9) {
     uint16_t duty;
     duty = (uint16_t)((v * (double)CPRD)/9);
-    setupPWM(channel,duty,pwmPin);
+    PWMC_SetDutyCycle(  PWM,  channel,  duty ) ;
+    PWMC_EnableChannel(  PWM,  channel ) ;
     return 0;
   } else {
     return 1;
   }
 }
 
-void readDecoder () {
+void setPosition(double degree) {
+  int direc = 0;
+  int numPulses;
   
+  if (degree < 0) {
+    direc = 1;
+  }
+  
+  numPulses = (int)((degree*(double)1800)/360);
+  Serial.print("numPulses");
+  Serial.println(numPulses);
+ if ( setVoltage(!direc,channel_0) ) {
+  Serial.println("#Error: Voltaje fuera de rango [0,9]");
+ }
+ if ( setVoltage(direc,channel_1) ) {
+  Serial.println("#Error: Voltaje fuera de rango [0,9]");
+ }
+ while(pulsos < numPulses){
+  
+ }
+ if ( setVoltage(0,channel_0) ) {
+  Serial.println("#Error: Voltaje fuera de rango [0,9]");
+ }
+ if ( setVoltage(0,channel_1) ) {
+  Serial.println("#Error: Voltaje fuera de rango [0,9]");
+ }
 }
 
 void setup() {
 
   Serial.begin(9600);
+  setupPWM(channel_0, duty_cycle_0, pwmPin35);
+  setupPWM(channel_1, duty_cycle_1, pwmPin37);
+
+  setupEncInt(encPin1, encPin2);
+
+    setPosition(90);
     
 //  Timer3.attachInterrupt(readDecoder).setPeriod(1000);    //  Cada 1000 us se lanza la función readDecoder()
 //   Timer3.start();
@@ -72,32 +117,47 @@ void setup() {
 
 void loop() {
 
-//  if ( setVoltage(0,channel_0,pwmPin35) ) {
+
+//  if ( setVoltage(0,channel_0) ) {
 //    Serial.println("#Error: Voltaje fuera de rango [0,9]");
 //  }
-//  if ( setVoltage(4,channel_1,pwmPin37) ) {
+//  if ( setVoltage(4,channel_1) ) {
 //    Serial.println("#Error: Voltaje fuera de rango [0,9]");
 //  }
 //
 //  delay(5000);
 //
-//  if ( setVoltage(4,channel_0,pwmPin35) ) {
+//    if (sentido) {
+//      if ( setVoltage(1,channel_0) ) {
+//        Serial.println("#Error: Voltaje fuera de rango [0,9]");
+//      }
+//      if ( setVoltage(0,channel_1) ) {
+//        Serial.println("#Error: Voltaje fuera de rango [0,9]");
+//      }
+//    } else {
+//      if ( setVoltage(0,channel_0) ) {
+//        Serial.println("#Error: Voltaje fuera de rango [0,9]");
+//      }
+//      if ( setVoltage(1,channel_1) ) {
+//        Serial.println("#Error: Voltaje fuera de rango [0,9]");
+//      }
+//    }
+//  
+//  Serial.print(pulsos);
+//  Serial.print(" ");
+//  Serial.println(sentido);
+  
+//
+//  delay(5000);
+
+//  if ( setVoltage(0,channel_0) ) {
 //    Serial.println("#Error: Voltaje fuera de rango [0,9]");
 //  }
-//  if ( setVoltage(0,channel_1,pwmPin37) ) {
+//  if ( setVoltage(0,channel_1) ) {
 //    Serial.println("#Error: Voltaje fuera de rango [0,9]");
 //  }
 //
 //  delay(5000);
-
-  if ( setVoltage(0,channel_0,pwmPin35) ) {
-    Serial.println("#Error: Voltaje fuera de rango [0,9]");
-  }
-  if ( setVoltage(0,channel_1,pwmPin37) ) {
-    Serial.println("#Error: Voltaje fuera de rango [0,9]");
-  }
-
-  delay(5000);
 //  double tension;
 //  String sentido;
 //  
@@ -111,17 +171,17 @@ void loop() {
 //  }
 //  
 //  if ( sentido == "derecha") {
-//    if ( setVoltage(0,channel_0,pwmPin35) ) {
+//    if ( setVoltage(0,channel_0) ) {
 //      Serial.println("#Error: Voltaje fuera de rango [0,9]");
 //    }
-//    if ( setVoltage(tension,channel_1,pwmPin37) ) {
+//    if ( setVoltage(tension,channel_1) ) {
 //      Serial.println("#Error: Voltaje fuera de rango [0,9]");
 //    }
 //  } else if ( sentido == "izquierda" ) {
-//    if ( setVoltage(tension,channel_0,pwmPin35) ) {
+//    if ( setVoltage(tension,channel_0) ) {
 //      Serial.println("#Error: Voltaje fuera de rango [0,9]");
 //    }
-//    if ( setVoltage(0,channel_1,pwmPin37) ) {
+//    if ( setVoltage(0,channel_1) ) {
 //      Serial.println("#Error: Voltaje fuera de rango [0,9]");
 //    }
 //  } else {
