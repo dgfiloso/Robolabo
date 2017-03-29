@@ -1,69 +1,123 @@
 #include <DueTimer.h>
 
-const uint32_t  CPRD = 50*84;     //  Frecuencia 20kHz -> Periodo 50 us -> Usando MCK este campo es: T*MCK = 50 us * 84 MHz
+const uint32_t  CPRD            = 50*84;          //  f = 20kHz -> T = 50 us -> T*MCK = 50 us * 84 MHz
+const uint32_t  channel_0       = 0;              // PWM channel 0
+const uint32_t  channel_1       = 1;              // PWM Channel 1
+const uint32_t  pwmPin35        = 35;             // PWM output pin
+const uint32_t  pwmPin37        = 37;             // PWM output pin
+const EPioType  peripheralId_0  = PIO_PERIPH_B;   //  Peripheral id of PWM pin
+const EPioType  peripheralId_1  = PIO_PERIPH_B;   //  Peripheral id of PWM pin
 
-const uint32_t  channel_0 = 0;   // PWM channel 0
-uint16_t        duty_cycle_0 = 0;       //  De 0 a CPRD
-const uint32_t  pwmPin35 = 35; // PWM output pin
+const byte      encPin1         = 3;              // Encoder input pin 1
+const byte      encPin2         = 7;              // Encoder input pin 2
+volatile int    nPulse          = 0;              //  Number of pulses read
 
-const uint32_t  channel_1 = 1;   // PWM Channel 1
-uint16_t        duty_cycle_1 = 0;       //  De 0 a CPRD
-const uint32_t  pwmPin37 = 37; // PWM output pin
-  
-const byte      encPin1 = 3; // Encoder input pin 1
-const byte      encPin2 = 7; // Encoder input pin 2
-volatile int    pulse = 0;
-volatile int    sentido = true;
-volatile int    nSample = 0;
-volatile int    muestreo = 0;
-volatile int    print_result = false;
+const int       nTotalRep       = 5;              //  Number of repetitions for each voltage value
+const int       nTotalSample    = 1200;           //  Number of samples for each repetition
+int             nRep            = 0;              //  Variable to save the number of repetition
+int             nSample         = 0;              //  Variable to save the number of sample
+int             voltModel       = 1;              //  Variable to save PWM Voltage
+double          posM[nTotalSample];               //  Array to save the values in each repetition
 
-int             voltModel = 1;
-const int       nRep = 5;
-const int       ms = 1200;
-volatile double posM[ms];
-int             fin = false;
+int             print_result    = false;          //  Variable to indicate to print the results
+int             fin             = false;          //  Variable to indicate when the program has finished
 
-//  Tal y como esta hecho, solo se pueden usar pines del periférico B
-void setupPWM(uint32_t channel, uint16_t duty, uint32_t pwmPin)
+/*
+ * ************************************************************************************************************
+ * -------------------------------------   Hardware PWM Functions   -------------------------------------------
+ * ************************************************************************************************************
+ */
+ /*
+ * @function    setupPWM(uint32_t channel, uint16_t duty, uint32_t pwmPin)
+ * @param       uint32_t channel        Channel of PWM
+ * @param       uint32_t pwmPin         Pin of PWM
+ * @param       uint32_t peripheralId   Peripheral of PWM pin
+ * @return      void
+ * @description Initialization of PWM
+ */
+void setupPWM(uint32_t channel, uint32_t pwmPin, EPioType peripheralId)
 {
-  uint32_t clka = 0;    //  No se usa
-  uint32_t clkb = 0;    //  No se usa
-  uint32_t mck = 0;     //  Master clock sin prescalado
-  //  Explicado en la página 1044 del datasheet
-  uint32_t prescaler = 0;
-  uint32_t alignment = 0;   //  0 izquierda, 1 centro
-  uint32_t polarity = 0;    //  0 comienza en nivel bajo, 1 comienza en nivel alto
+  uint32_t clka       = 0;    //  Not used
+  uint32_t clkb       = 0;    //  Not used
+  uint32_t mck        = 0;    //  Master clock without prescaler
+  uint32_t prescaler  = 0;    //  No prescaler
+  uint16_t duty       = 0;    //  0%
+  uint32_t alignment  = 0;    //  0 left, 1 center
+  uint32_t polarity   = 0;    //  0 low level at beginning, 1 high level at beginning
+  uint16_t timeH      = 0;
+  uint16_t timeL      = 0;
 
-  uint16_t timeH = 0;
-  uint16_t timeL = 0;
+  //  Enable PWM peripheral
+  pmc_enable_periph_clk(ID_PWM);    //  PWM ID Register (ID_PWM) -> ../system/CMSIS/Device/ATMEL/Include/sam3x8e.h
 
-  //  Habilitamos el periférico de PWM
-  pmc_enable_periph_clk(ID_PWM);    //  ID del PWM, se encuentra en ../system/CMSIS/Device/ATMEL/Include/sam3x8e.h
-
-  //  La constante PWM es la dirección base del PWM que se encuentra definida en ../system/CMSIS/Device/ATMEL/Include/sam3x8e.h
+  //  Configure PWM
+  //  PWM Base address (PWM) -> ../system/CMSIS/Device/ATMEL/Include/sam3x8e.h
   PWMC_ConfigureClocks(clka, clkb, mck ) ;
   PWMC_ConfigureChannel(  PWM,  channel,  prescaler,  alignment,  polarity ) ;
-  PWMC_SetPeriod(  PWM,  channel, CPRD ) ; 
+  PWMC_SetPeriod(  PWM,  channel, CPRD ) ;
   PWMC_SetDutyCycle(  PWM,  channel,  duty ) ;
   PWMC_SetDeadTime(  PWM,  channel,  timeH,  timeL ) ;
 
-//  PWMC_EnableChannel(  PWM,  channel ) ;
-
-  //  Configuramos el puerto del PWM
+  //  Configure PWM pin
   PIO_Configure(
     g_APinDescription[pwmPin].pPort,
-    PIO_PERIPH_B,
+    peripheralId,
     g_APinDescription[pwmPin].ulPin,
     g_APinDescription[pwmPin].ulPinConfiguration);
 }
 
-void newEncPulse () 
+/*
+ * @function    setVoltage(double v, uint32_t channel)
+ * @param       double    v  Voltage to set
+ * @param       uint32_t  channel PWM channel
+ * @return      void
+ * @description Set DC voltage of PWM
+ */
+void setVoltage(double v, uint32_t channel)
 {
-  pulse++;
+  if (v >= 0 && v <= 9)
+  {
+    uint16_t duty;
+    duty = (uint16_t)((v * (double)CPRD)/9);
+    PWMC_SetDutyCycle(  PWM,  channel,  duty ) ;
+    PWMC_EnableChannel(  PWM,  channel ) ;
+  }
 }
 
-int setupEncInt(int encPin1, int encPin2) {
+/*
+ * ************************************************************************************************************
+ * ----------------------------------------   Encoder Functions   ---------------------------------------------
+ * ************************************************************************************************************
+ */
+ /*
+ * @function    get_nPulse()
+ * @return      int Number of pulses save in the variable
+ * @description Getter of nPulse variable
+ */
+int get_nPulse()
+{
+  return nPulse;
+}
+
+/*
+ * @function    newEncPulse()
+ * @return      void
+ * @description Add new pulse
+ */
+void newEncPulse ()
+{
+  nPulse++;
+}
+
+/*
+ * @function    setupEncInt(int encPin1, int encPin2)
+ * @param       int encPin1 Pin of enconder
+ * @param       int encPin2 Pin of enconder
+ * @return      void
+ * @description Set the pins of encoder as input and create interrupts for them, using newEncPulse as callback
+ */
+void setupEncInt(int encPin1, int encPin2)
+{
   pinMode(encPin1, INPUT);
   attachInterrupt(digitalPinToInterrupt(encPin1), newEncPulse, CHANGE);
 
@@ -71,65 +125,26 @@ int setupEncInt(int encPin1, int encPin2) {
   attachInterrupt(digitalPinToInterrupt(encPin2), newEncPulse, CHANGE);
 }
 
-int setVoltage(double v, uint32_t channel) 
-{
-  if (v >= 0 && v <= 9) 
-  {
-    uint16_t duty;
-    duty = (uint16_t)((v * (double)CPRD)/9);
-    PWMC_SetDutyCycle(  PWM,  channel,  duty ) ;
-    PWMC_EnableChannel(  PWM,  channel ) ;
-    return 0;
-  } 
-  else 
-  {
-    return 1;
-  }
-}
-
-void setPosition(double degree) 
-{
-  int direc = 0;
-  int numPulses;
-  
-  if (degree < 0) 
-  {
-    direc = 1;
-  }
-  
- numPulses = (int)((degree*(double)1800)/360);
- if ( setVoltage(!direc,channel_0) ) 
- {
-  Serial.println("#Error: Voltaje fuera de rango [0,9]");
- }
- if ( setVoltage(direc,channel_1) ) 
- {
-  Serial.println("#Error: Voltaje fuera de rango [0,9]");
- }
- 
- while(pulse < numPulses)
- {
-  
- }
- 
- if ( setVoltage(0,channel_0) ) 
- {
-  Serial.println("#Error: Voltaje fuera de rango [0,9]");
- }
- if ( setVoltage(0,channel_1) ) 
- {
-  Serial.println("#Error: Voltaje fuera de rango [0,9]");
- }
-}
-
+/*
+ * ************************************************************************************************************
+ * --------------------------------------   Motor Model Functions   -------------------------------------------
+ * ************************************************************************************************************
+ */
+/*
+ * @function    samplePosition()
+ * @return      void
+ * @description Save the position in the array. Also control the PWM voltage depending on the number of samples and repetitions
+ */
 void samplePosition()
 {
-  if (nSample < (ms/2)) 
+  int nPulse = get_nPulse();
+  
+  if (nSample < (nTotalSample/2)) 
   {
     setVoltage(voltModel, channel_0);
     setVoltage(0, channel_1);
 
-    posM[nSample] += pulse;
+    posM[nSample] += nPulse;
     nSample++; 
   }
   else if (nSample >= 600 && nSample < 1200) 
@@ -137,53 +152,70 @@ void samplePosition()
     setVoltage(0, channel_0);
     setVoltage(0, channel_1);
 
-    posM[nSample] += pulse;
+    posM[nSample] += nPulse;
     nSample++;
   }
-  else if (nSample == ms)
+  else if (nSample == nTotalSample)
   {
-    muestreo++;
-    pulse = 0;
-    if (muestreo < nRep)
+    nRep++;
+    nPulse = 0;
+    if (nRep < nTotalRep)
     {
       nSample = 0;
     }
-    else if (muestreo == nRep)
+    else if (nRep == nTotalRep)
     {
       print_result  = true;
-      muestreo++;
+      nRep++;
       nSample++;
     }
   }
 }
 
-void calcularMedia()
+/*
+ * @function    meanValueDoubleArray(double* a)
+ * @param       double* a Pointer to double array
+ * @return      void
+ * @description Calculate mean value
+ */
+void meanValueDoubleArray(double* a)
 {
   int i;
-  for (i = 0; i<ms; i++)
+  for (i = 0; i<(sizeof(a)/sizeof(double)); i++)
   {
-    posM[i] = posM[i]/((double)5);
+    a[i] = a[i]/((double)nTotalRep);
   }
 }
 
-void setupPosM()
+/*
+ * @function    initDoubleArray(double* a)
+ * @param       double* a Pointer to double array
+ * @return      void
+ * @description Initialization of array
+ */
+void initDoubleArray(double* a)
 {
   int i;
-  for(i = 0; i<ms; i++)
+  for(i = 0; i<(sizeof(a)/sizeof(double)); i++)
   {
-    posM[i] = 0.0;
+    a[i] = 0.0;
   }
 }
 
+/*
+ * ************************************************************************************************************
+ * -------------------------------------------   Main Program   -----------------------------------------------
+ * ************************************************************************************************************
+ */
 void setup() 
 {
   Serial.begin(115200);
-  setupPWM(channel_0, duty_cycle_0, pwmPin35);
-  setupPWM(channel_1, duty_cycle_1, pwmPin37);
+  setupPWM(channel_0, pwmPin35, peripheralId_0);
+  setupPWM(channel_1, pwmPin37, peripheralId_1);
 
   setupEncInt(encPin1, encPin2);
 
-  setupPosM();
+  initDoubleArray(posM);
   
   Timer3.attachInterrupt(samplePosition).setPeriod(1000);    //  Cada 1000 us se lanza la función readDecoder()
   Timer3.start();
@@ -202,13 +234,13 @@ void loop()
     {
       
     } 
-      calcularMedia();
+      meanValueDoubleArray(posM);
       Serial.print("VOLTAJE = ");
       Serial.println(voltModel);
       Serial.print("0.00");
       Serial.print(" ");
       Serial.println("0.00");
-      for (i=0; i<ms; i++)
+      for (i=0; i<nTotalSample; i++)
       {
         Serial.print((double)(i+1));
         Serial.print(" ");
@@ -217,8 +249,8 @@ void loop()
       Serial.println();
       print_result = false; 
       nSample = 0;
-      muestreo = 0;
-      setupPosM();
+      nRep = 0;
+      initDoubleArray(posM);
       delay(1000);
 
       if (voltModel == 9)
@@ -226,84 +258,7 @@ void loop()
         fin = true;
       }
   }  
-
-    while(fin)
-    {
-      
-    }
-
-//  if ( setVoltage(0,channel_0) ) {
-//    Serial.println("#Error: Voltaje fuera de rango [0,9]");
-//  }
-//  if ( setVoltage(4,channel_1) ) {
-//    Serial.println("#Error: Voltaje fuera de rango [0,9]");
-//  }
-//
-//  delay(5000);
-//
-//    if (sentido) {
-//      if ( setVoltage(1,channel_0) ) {
-//        Serial.println("#Error: Voltaje fuera de rango [0,9]");
-//      }
-//      if ( setVoltage(0,channel_1) ) {
-//        Serial.println("#Error: Voltaje fuera de rango [0,9]");
-//      }
-//    } else {
-//      if ( setVoltage(0,channel_0) ) {
-//        Serial.println("#Error: Voltaje fuera de rango [0,9]");
-//      }
-//      if ( setVoltage(1,channel_1) ) {
-//        Serial.println("#Error: Voltaje fuera de rango [0,9]");
-//      }
-//    }
-//  
-//  Serial.print(pulse);
-//  Serial.print(" ");
-//  Serial.println(sentido);
-  
-//
-//  delay(5000);
-
-//  if ( setVoltage(0,channel_0) ) {
-//    Serial.println("#Error: Voltaje fuera de rango [0,9]");
-//  }
-//  if ( setVoltage(0,channel_1) ) {
-//    Serial.println("#Error: Voltaje fuera de rango [0,9]");
-//  }
-//
-//  delay(5000);
-//  double tension;
-//  String sentido;
-//  
-//  Serial.println("Indique la tension");
-//  while(!Serial.available()) {
-//    tension = Serial.read();
-//  }
-//  Serial.println("Indique el sentido");
-//  while(!Serial.available()) {
-//    sentido = Serial.readString();
-//  }
-//  
-//  if ( sentido == "derecha") {
-//    if ( setVoltage(0,channel_0) ) {
-//      Serial.println("#Error: Voltaje fuera de rango [0,9]");
-//    }
-//    if ( setVoltage(tension,channel_1) ) {
-//      Serial.println("#Error: Voltaje fuera de rango [0,9]");
-//    }
-//  } else if ( sentido == "izquierda" ) {
-//    if ( setVoltage(tension,channel_0) ) {
-//      Serial.println("#Error: Voltaje fuera de rango [0,9]");
-//    }
-//    if ( setVoltage(0,channel_1) ) {
-//      Serial.println("#Error: Voltaje fuera de rango [0,9]");
-//    }
-//  } else {
-//    Serial.println("#Error: Sentido no definido, solo derecha o izquierda");
-//  }
-//
-//  tension = 0;
-//  sentido = "";
+  while(fin){}
 }
 
 
