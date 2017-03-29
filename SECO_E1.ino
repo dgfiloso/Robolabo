@@ -203,6 +203,71 @@ void initDoubleArray(double* a)
 }
 
 /*
+ * @function    initMotorModel()
+ * @return      void
+ * @description Motor model initialization. Motor movement starts.
+ */
+void initMotorModel()
+{
+  setVoltage(voltModel, channel_0);
+  setVoltage(0, channel_1);
+}
+
+/*
+ * @function    motorModel()
+ * @return      void
+ * @description Main model program for getting motor data, configured by constants at the beginnig of the file
+ */
+void motorModel()
+{
+  int i;
+  for (voltModel = 1; voltModel < 10; voltModel++)
+  {
+    while (!print_result){} 
+    meanValueDoubleArray(posM);
+    Serial.print("VOLTAJE = ");
+    Serial.println(voltModel);
+    Serial.print("0.00");
+    Serial.print(" ");
+    Serial.println("0.00");
+    for (i=0; i<nTotalSample; i++)
+    {
+      Serial.print((double)(i+1));
+      Serial.print(" ");
+      Serial.println(posM[i]);
+    }
+    Serial.println();
+    print_result = false; 
+    nSample = 0;
+    nRep = 0;
+    initDoubleArray(posM);
+    delay(1000);
+
+    if (voltModel == 9)
+    {
+      fin = true;
+    }
+  }  
+  while(fin){}
+}
+
+/*
+ * ************************************************************************************************************
+ * -----------------------------------   Motor Controller Functions   -----------------------------------------
+ * ************************************************************************************************************
+ */
+
+void initMotorController()
+{
+  
+}
+
+void motorController()
+{
+  
+}
+
+/*
  * ************************************************************************************************************
  * -------------------------------------------   Main Program   -----------------------------------------------
  * ************************************************************************************************************
@@ -214,51 +279,23 @@ void setup()
   setupPWM(channel_1, pwmPin37, peripheralId_1);
 
   setupEncInt(encPin1, encPin2);
-
   initDoubleArray(posM);
   
   Timer3.attachInterrupt(samplePosition).setPeriod(1000);    //  Cada 1000 us se lanza la función readDecoder()
   Timer3.start();
-  
-  setVoltage(voltModel, channel_0);
-  setVoltage(0, channel_1);
 
+  //  Uncomment initMotorModel() for getting data to make the model
+  //  Uncomment initMotorController() for using the controller designed
+  initMotorModel();
+  //  initMotorController();
 }
 
 void loop() 
 {
-  int i;
-  for (voltModel = 1; voltModel < 10; voltModel++)
-  {
-    while (!print_result)
-    {
-      
-    } 
-      meanValueDoubleArray(posM);
-      Serial.print("VOLTAJE = ");
-      Serial.println(voltModel);
-      Serial.print("0.00");
-      Serial.print(" ");
-      Serial.println("0.00");
-      for (i=0; i<nTotalSample; i++)
-      {
-        Serial.print((double)(i+1));
-        Serial.print(" ");
-        Serial.println(posM[i]);
-      }
-      Serial.println();
-      print_result = false; 
-      nSample = 0;
-      nRep = 0;
-      initDoubleArray(posM);
-      delay(1000);
-
-      if (voltModel == 9)
-      {
-        fin = true;
-      }
-  }  
-  while(fin){}
+  //  Uncomment motorModel() for getting data to make the model
+  //  Uncomment motorController() for using the controller designed
+  motorModel();
+  //  motorController();
 }
 
 
