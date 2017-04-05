@@ -1,27 +1,31 @@
 #include <DueTimer.h>
 
 const uint32_t  CPRD            = 50*84;          //  f = 20kHz -> T = 50 us -> T*MCK = 50 us * 84 MHz
-const uint32_t  channel_0       = 0;              // PWM channel 0
-const uint32_t  channel_1       = 1;              // PWM Channel 1
-const uint32_t  pwmPin35        = 35;             // PWM output pin
-const uint32_t  pwmPin37        = 37;             // PWM output pin
+const uint32_t  channel_0       = 0;              //  PWM channel 0
+const uint32_t  channel_1       = 1;              //  PWM Channel 1
+const uint32_t  pwmPin35        = 35;             //  PWM output pin
+const uint32_t  pwmPin37        = 37;             //  PWM output pin
 const EPioType  peripheralId_0  = PIO_PERIPH_B;   //  Peripheral id of PWM pin
 const EPioType  peripheralId_1  = PIO_PERIPH_B;   //  Peripheral id of PWM pin
 
-const byte      encPin1         = 3;              // Encoder input pin 1
-const byte      encPin2         = 7;              // Encoder input pin 2
+const byte      encPinA         = 3;              //  Encoder input pin A
+const byte      encPinB         = 7;              //  Encoder input pin B
 volatile int    nPulse          = 0;              //  Number of pulses read
 
-const int       nTotalRep       = 5;              //  Number of repetitions for each voltage value
+const int       nTotalRep       = 10;              //  Number of repetitions for each voltage value
 const int       nTotalSample    = 1200;           //  Number of samples for each repetition
 int             nRep            = 0;              //  Variable to save the number of repetition
 int             nSample         = 0;              //  Variable to save the number of sample
 int             voltModel       = 1;              //  Variable to save PWM Voltage
 double          posM[nTotalSample];               //  Array to save the values in each repetition
 
+double          Kp              = 1.78538975;     //  Kp del controlador
+int             nSampleContr    = 0;              //  Variable to save the number of sample using the controller
+double          pi              = 3.14159265359;
+double          finalPos        = pi;
+
 int             print_result    = false;          //  Variable to indicate to print the results
 int             fin             = false;          //  Variable to indicate when the program has finished
-
 /*
  * ************************************************************************************************************
  * -------------------------------------   Hardware PWM Functions   -------------------------------------------
@@ -89,24 +93,38 @@ void setVoltage(double v, uint32_t channel)
  * ----------------------------------------   Encoder Functions   ---------------------------------------------
  * ************************************************************************************************************
  */
- /*
- * @function    get_nPulse()
- * @return      int Number of pulses save in the variable
- * @description Getter of nPulse variable
+/*
+ * @function    newEncAPulse()
+ * @return      void
+ * @description Count new pulse
  */
-int get_nPulse()
+void newEncAPulse ()
 {
-  return nPulse;
+  if ((digitalRead(encPinA) == HIGH && digitalRead(encPinB) == LOW) || (digitalRead(encPinA) == LOW && digitalRead(encPinB) == HIGH))
+  {
+    nPulse++;
+  }
+  else
+  {
+    nPulse--;
+  }
 }
 
 /*
- * @function    newEncPulse()
+ * @function    newEncBPulse()
  * @return      void
- * @description Add new pulse
+ * @description Count new pulse
  */
-void newEncPulse ()
+void newEncBPulse ()
 {
-  nPulse++;
+  if ((digitalRead(encPinB)==HIGH && digitalRead(encPinA)== HIGH) || (digitalRead(encPinB)==LOW && digitalRead(encPinA)== LOW)) 
+  {
+    nPulse++;
+  }
+  else
+  {
+    nPulse--;
+  }
 }
 
 /*
@@ -116,13 +134,13 @@ void newEncPulse ()
  * @return      void
  * @description Set the pins of encoder as input and create interrupts for them, using newEncPulse as callback
  */
-void setupEncInt(int encPin1, int encPin2)
+void setupEncInt(int encPinA, int encPinB)
 {
-  pinMode(encPin1, INPUT);
-  attachInterrupt(digitalPinToInterrupt(encPin1), newEncPulse, CHANGE);
+  pinMode(encPinA, INPUT);
+  attachInterrupt(digitalPinToInterrupt(encPinA), newEncAPulse, CHANGE);
 
-  pinMode(encPin2, INPUT);
-  attachInterrupt(digitalPinToInterrupt(encPin2), newEncPulse, CHANGE);
+  pinMode(encPinB, INPUT);
+  attachInterrupt(digitalPinToInterrupt(encPinB), newEncBPulse, CHANGE);
 }
 
 /*
@@ -137,8 +155,6 @@ void setupEncInt(int encPin1, int encPin2)
  */
 void samplePosition()
 {
-  int nPulse = get_nPulse();
-  
   if (nSample < (nTotalSample/2)) 
   {
     setVoltage(voltModel, channel_0);
@@ -223,7 +239,11 @@ void motorModel()
   int i;
   for (voltModel = 1; voltModel < 10; voltModel++)
   {
-    while (!print_result){} 
+    while (!print_result)
+    {
+      Serial.println("");
+    } 
+    Timer3.stop();
     meanValueDoubleArray(posM);
     Serial.print("VOLTAJE = ");
     Serial.println(voltModel);
@@ -247,6 +267,10 @@ void motorModel()
     {
       fin = true;
     }
+    else
+    {
+      Timer3.start();
+    }
   }  
   while(fin){}
 }
@@ -256,15 +280,34 @@ void motorModel()
  * -----------------------------------   Motor Controller Functions   -----------------------------------------
  * ************************************************************************************************************
  */
-
-void initMotorController()
+void positionController(double rad, double pos)
 {
+  double v;
+  double radPulse;
+
+  radPulse = (double)(pos*2*pi)/(double)1800;
+  v = Kp*(rad-radPulse);
+  if (v > 9) v = 9;
+  else if (v < -9) v = -9;
   
+  if (v>0)
+  {
+    setVoltage(abs(v), channel_0);
+    setVoltage(0, channel_1);
+  }
+  else if (v<0)
+  {
+    setVoltage(0, channel_0);
+    setVoltage(abs(v), channel_1);
+  }
 }
 
-void motorController()
+void sampleController()
 {
-  
+  Serial.print(nSampleContr++);
+  Serial.print(" ");
+  Serial.println(nPulse);
+  positionController(finalPos, nPulse);
 }
 
 /*
@@ -278,24 +321,23 @@ void setup()
   setupPWM(channel_0, pwmPin35, peripheralId_0);
   setupPWM(channel_1, pwmPin37, peripheralId_1);
 
-  setupEncInt(encPin1, encPin2);
-  initDoubleArray(posM);
-  
-  Timer3.attachInterrupt(samplePosition).setPeriod(1000);    //  Cada 1000 us se lanza la función readDecoder()
-  Timer3.start();
+  setupEncInt(encPinA, encPinB);
 
-  //  Uncomment initMotorModel() for getting data to make the model
-  //  Uncomment initMotorController() for using the controller designed
-  initMotorModel();
-  //  initMotorController();
+  //  Uncomment to model
+  //    initDoubleArray(posM);
+  //    Timer3.attachInterrupt(samplePosition).setPeriod(1000);    //  Cada 1000 us se lanza la función readDecoder()
+  //    Timer3.start();
+  //    initMotorModel();
+
+  //  Uncomment to use the controller
+    Timer3.attachInterrupt(sampleController).setPeriod(1000);    //  Cada 1000 us se lanza la función readDecoder()
+    Timer3.start();
 }
 
 void loop() 
 {
-  //  Uncomment motorModel() for getting data to make the model
-  //  Uncomment motorController() for using the controller designed
-  motorModel();
-  //  motorController();
+  //  Uncomment to model
+//    motorModel();
 }
 
 
