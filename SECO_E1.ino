@@ -19,13 +19,14 @@ int             nSample         = 0;              //  Variable to save the numbe
 int             voltModel       = 1;              //  Variable to save PWM Voltage
 double          posM[nTotalSample];               //  Array to save the values in each repetition
 
-double          Kp              = 1.78538975;     //  Kp del controlador
+double          Kp              = 1.78538975;     //  Controller Kp
 int             nSampleContr    = 0;              //  Variable to save the number of sample using the controller
-double          pi              = 3.14159265359;
-double          finalPos        = pi;
+double          pi              = 3.14159265359;  //  Pi value
+double          finalPos        = pi;             //  Input signal, position we want to achieve 
 
 int             print_result    = false;          //  Variable to indicate to print the results
 int             fin             = false;          //  Variable to indicate when the program has finished
+
 /*
  * ************************************************************************************************************
  * -------------------------------------   Hardware PWM Functions   -------------------------------------------
@@ -280,6 +281,13 @@ void motorModel()
  * -----------------------------------   Motor Controller Functions   -----------------------------------------
  * ************************************************************************************************************
  */
+ /*
+ * @function    positionController(double rad, double pos)
+ * @param       double rad  Input, final position
+ * @param       double pos  Motor position
+ * @return      void
+ * @description Adjust the PWM voltage depending on the position
+ */
 void positionController(double rad, double pos)
 {
   double v;
@@ -302,6 +310,11 @@ void positionController(double rad, double pos)
   }
 }
 
+ /*
+ * @function    sampleController()
+ * @return      void
+ * @description Sample the motor position and call positionController(finalPos, nPulse) to adjust the voltage
+ */
 void sampleController()
 {
   Serial.print(nSampleContr++);
@@ -323,7 +336,7 @@ void setup()
 
   setupEncInt(encPinA, encPinB);
 
-  //  Uncomment to model
+  //  Uncomment to model the motor
   //    initDoubleArray(posM);
   //    Timer3.attachInterrupt(samplePosition).setPeriod(1000);    //  Cada 1000 us se lanza la función readDecoder()
   //    Timer3.start();
@@ -336,7 +349,7 @@ void setup()
 
 void loop() 
 {
-  //  Uncomment to model
+  //  Uncomment to model the motor
 //    motorModel();
 }
 
